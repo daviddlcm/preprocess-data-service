@@ -18,7 +18,7 @@ const API_ENDPOINTS = {
 
 // Configuración de predicción
 const PREDICTION_CONFIG = {
-  DEFAULT_API_URL: 'https://predict-service-production.up.railway.app/predict',
+  DEFAULT_API_URL: 'http://localhost:4000/api/text-mining/stats',
   TIMEOUT: 30000,
   FALLBACK_ENABLED: true
 };

@@ -171,17 +171,37 @@ class ApiGatewayService {
     }
   }
 
-  // Obtener estadísticas de chatbot
+  // Obtener estadísticas de chatbot desde API Gateway
   async getChatbotStats(userId, token) {
     try {
       const data = await this.makeRequest({
         method: 'GET',
-        url: `/chatbot/text-mining/stats/${userId}/weekly`
+        url: `/chatbot/text-mining/stats/${userId}`
       }, token);
 
-      return {
-        preguntas_por_categoria: data.preguntas_por_categoria || {}
-      };
+      if (data && data.success && data.stats) {
+        const stats = data.stats;
+        
+        // Mapear la respuesta del API Gateway al formato esperado
+        return {
+          preguntas_por_categoria: {
+            nutricion: stats.preguntas_nutricion || 0,
+            entrenamiento: stats.preguntas_entrenamiento || 0,
+            recuperacion: stats.preguntas_recuperacion || 0,
+            prevencion: stats.preguntas_prevencion_lesiones || 0,
+            equipamiento: stats.preguntas_equipamiento || 0
+          },
+          // Datos adicionales del API Gateway
+          total_preguntas: stats.total_preguntas || 0,
+          score_ponderado: stats.score_ponderado || 0,
+          ultima_actualizacion: stats.ultima_actualizacion
+        };
+      } else {
+        logger.warn(`Respuesta inesperada del API Gateway para chatbot del usuario ${userId}:`, data);
+        return {
+          preguntas_por_categoria: {}
+        };
+      }
     } catch (error) {
       logger.error(`Error obteniendo stats de chatbot para usuario ${userId}:`, error.message);
       return {
@@ -193,13 +213,21 @@ class ApiGatewayService {
   // Obtener analytics de engagement
   async getEngagementAnalytics(userId, token) {
     try {
+      // Obtener interacciones de chatbot desde el API Gateway
       const data = await this.makeRequest({
         method: 'GET',
-        url: `/engagement/analytics/${userId}`
+        url: `/chatbot/text-mining/stats/${userId}`
       }, token);
 
+      let interacciones_chatbot = 0;
+      
+      if (data && data.success && data.stats) {
+        const stats = data.stats;
+        interacciones_chatbot = stats.total_preguntas || 0;
+      }
+
       return {
-        interacciones_chatbot: data.interacciones_chatbot || 0
+        interacciones_chatbot: interacciones_chatbot
       };
     } catch (error) {
       logger.error(`Error obteniendo analytics de engagement para usuario ${userId}:`, error.message);
@@ -246,11 +274,12 @@ class ApiGatewayService {
 
       // La respuesta tiene estructura: { success: true, message: "...", data: [...] }
       if (data && data.success && data.data) {
-        logger.info(`Obtenidos ${data.data.length} engagement stats del endpoint masivo`);
-        return data.data;
+        logger.info(`Obtenidos ${data.data.length} logs de engagement del endpoint masivo`);
+        // Procesar logs y convertirlos en estadísticas por usuario
+        return this.processEngagementLogs(data.data);
       } else if (Array.isArray(data)) {
-        logger.info(`Obtenidos ${data.length} engagement stats del endpoint masivo`);
-        return data;
+        logger.info(`Obtenidos ${data.length} logs de engagement del endpoint masivo`);
+        return this.processEngagementLogs(data);
       } else {
         logger.warn('Estructura de respuesta inesperada para engagement:', data);
         return [];
@@ -609,6 +638,58 @@ class ApiGatewayService {
       totalTime,
       avgPace
     };
+  }
+
+  // Procesar logs de engagement y convertirlos en estadísticas por usuario
+  processEngagementLogs(engagementLogs) {
+    const userStats = new Map();
+    
+    engagementLogs.forEach(log => {
+      const userId = log.user_id;
+      
+      if (!userStats.has(userId)) {
+        userStats.set(userId, {
+          user_id: userId,
+          tiempo_total: 0,
+          vistas_abiertas: 0,
+          dias_activo: new Set(),
+          dias_inactivo: 0
+        });
+      }
+      
+      const stats = userStats.get(userId);
+      
+      // Sumar tiempo total (convertir segundos a minutos)
+      stats.tiempo_total += (log.duration_seconds || 0) / 60;
+      
+      // Contar vistas abiertas
+      stats.vistas_abiertas += 1;
+      
+      // Agregar día activo (extraer fecha de viewed_at)
+      if (log.viewed_at) {
+        const date = new Date(log.viewed_at);
+        const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        stats.dias_activo.add(dayKey);
+      }
+    });
+    
+    // Convertir Set a número y calcular días inactivos
+    const processedStats = [];
+    userStats.forEach((stats, userId) => {
+      const diasActivo = stats.dias_activo.size;
+      const diasInactivo = Math.max(0, 30 - diasActivo); // Asumir 30 días como período
+      
+      processedStats.push({
+        user_id: userId,
+        tiempo_total: Math.round(stats.tiempo_total * 100) / 100, // Redondear a 2 decimales
+        vistas_abiertas: stats.vistas_abiertas,
+        dias_activo: diasActivo,
+        dias_inactivo: diasInactivo
+      });
+    });
+    
+    logger.info(`Procesados ${processedStats.length} usuarios con estadísticas de engagement`);
+    return processedStats;
   }
 }
 

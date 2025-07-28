@@ -1,0 +1,798 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "RunInsight Prediction Service API",
+    "description": "Microservicio de predicción de abandono de usuarios para RunInsight. Recolecta datos de múltiples servicios, calcula variables compuestas y genera predicciones de riesgo de abandono.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "RunInsight Team",
+      "email": "support@runinsight.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Servidor de desarrollo local"
+    },
+    {
+      "url": "https://your-service.railway.app",
+      "description": "Servidor de producción (Railway)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Endpoints de verificación de estado del servicio"
+    },
+    {
+      "name": "Predictions",
+      "description": "Endpoints para obtener predicciones de abandono de usuarios"
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Endpoints de diagnóstico y configuración"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health Check",
+        "description": "Verifica el estado del servicio de predicción",
+        "responses": {
+          "200": {
+            "description": "Servicio funcionando correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "OK"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2025-07-28T09:30:00.000Z"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "RunInsight Prediction Service"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        }
+      }
+    },
+    "/predictions/all": {
+      "get": {
+        "tags": ["Predictions"],
+        "summary": "Obtener predicciones de todos los usuarios",
+        "description": "Recolecta datos de todos los usuarios, calcula variables compuestas y genera predicciones de abandono. Los resultados se almacenan en cache por 1 hora.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "header",
+            "description": "Token de administrador para autenticación con API Gateway",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Predicciones generadas exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "predictions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Prediction"
+                      }
+                    },
+                    "metadata": {
+                      "$ref": "#/components/schemas/PredictionMetadata"
+                    },
+                    "collection_errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "description": "Errores durante la recolección de datos"
+                    },
+                    "prediction_errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "description": "Errores durante la generación de predicciones"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token no proporcionado o inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Token requerido"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Debe proporcionar un token en el header 'token' o 'authorization'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        }
+      }
+    },
+    "/predictions/user/{id}": {
+      "get": {
+        "tags": ["Predictions"],
+        "summary": "Obtener predicción de un usuario específico",
+        "description": "Genera predicción de abandono para un usuario específico. Si no hay datos en cache, ejecuta el proceso completo.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID del usuario",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 2
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "Token de administrador para autenticación con API Gateway",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Predicción generada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prediction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token no proporcionado o inválido"
+          },
+          "404": {
+            "description": "Usuario no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Usuario no encontrado"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Ejecuta /predictions/all primero para generar predicciones"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        }
+      }
+    },
+    "/predictions/refresh": {
+      "post": {
+        "tags": ["Predictions"],
+        "summary": "Forzar recálculo de predicciones",
+        "description": "Fuerza la recolección de datos y regeneración de predicciones, ignorando el cache.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "header",
+            "description": "Token de administrador para autenticación con API Gateway",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Predicciones regeneradas exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Predicciones regeneradas exitosamente"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "total_users": {
+                      "type": "integer",
+                      "example": 9
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token no proporcionado o inválido"
+          },
+          "500": {
+            "description": "Error interno del servidor"
+          }
+        }
+      }
+    },
+    "/predictions/status": {
+      "get": {
+        "tags": ["Diagnostics"],
+        "summary": "Estado del procesamiento",
+        "description": "Obtiene el estado actual del procesamiento de predicciones",
+        "responses": {
+          "200": {
+            "description": "Estado del procesamiento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_processing": {
+                      "type": "boolean",
+                      "description": "Indica si hay un procesamiento en curso"
+                    },
+                    "last_processed": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp del último procesamiento"
+                    },
+                    "cache_status": {
+                      "type": "string",
+                      "enum": ["valid", "expired", "empty"],
+                      "description": "Estado del cache de predicciones"
+                    },
+                    "total_users": {
+                      "type": "integer",
+                      "description": "Número total de usuarios procesados"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/predictions/endpoints-status": {
+      "get": {
+        "tags": ["Diagnostics"],
+        "summary": "Estado de endpoints masivos",
+        "description": "Verifica la disponibilidad y rendimiento de los endpoints masivos del API Gateway",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "header",
+            "description": "Token de administrador para autenticación con API Gateway",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de endpoints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "users": {
+                          "$ref": "#/components/schemas/EndpointStatus"
+                        },
+                        "engagement": {
+                          "$ref": "#/components/schemas/EndpointStatus"
+                        },
+                        "trainings": {
+                          "$ref": "#/components/schemas/EndpointStatus"
+                        },
+                        "chatbot": {
+                          "$ref": "#/components/schemas/EndpointStatus"
+                        },
+                        "analytics": {
+                          "$ref": "#/components/schemas/EndpointStatus"
+                        }
+                      }
+                    },
+                    "recommended_strategy": {
+                      "type": "string",
+                      "enum": ["massive", "individual"],
+                      "description": "Estrategia recomendada basada en endpoints disponibles"
+                    },
+                    "available_endpoints": {
+                      "type": "integer",
+                      "description": "Número de endpoints disponibles"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token no proporcionado o inválido"
+          }
+        }
+      }
+    },
+    "/predictions/auth-test": {
+      "get": {
+        "tags": ["Diagnostics"],
+        "summary": "Test de autenticación y endpoints",
+        "description": "Prueba la autenticación con el API Gateway y verifica todos los endpoints",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "header",
+            "description": "Token de administrador para autenticación con API Gateway",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados del test de autenticación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "auth_status": {
+                      "type": "string",
+                      "enum": ["success", "failed"],
+                      "description": "Estado de la autenticación"
+                    },
+                    "token_provided": {
+                      "type": "boolean",
+                      "description": "Indica si se proporcionó un token"
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "users_all": {
+                          "$ref": "#/components/schemas/EndpointTestResult"
+                        },
+                        "engagement_all": {
+                          "$ref": "#/components/schemas/EndpointTestResult"
+                        },
+                        "trainings_all": {
+                          "$ref": "#/components/schemas/EndpointTestResult"
+                        },
+                        "chatbot_all": {
+                          "$ref": "#/components/schemas/EndpointTestResult"
+                        },
+                        "analytics_all": {
+                          "$ref": "#/components/schemas/EndpointTestResult"
+                        }
+                      }
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "total_endpoints": {
+                          "type": "integer"
+                        },
+                        "available_endpoints": {
+                          "type": "integer"
+                        },
+                        "success_rate": {
+                          "type": "string"
+                        },
+                        "recommendation": {
+                          "type": "string",
+                          "enum": ["ready", "needs_attention"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token no proporcionado o inválido"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "token": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "token",
+        "description": "Token de administrador para autenticación con API Gateway"
+      }
+    },
+    "schemas": {
+      "Prediction": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "description": "ID del usuario",
+            "example": 2
+          },
+          "prediccion_abandono": {
+            "type": "boolean",
+            "description": "Predicción de abandono (true = alto riesgo, false = bajo riesgo)",
+            "example": false
+          },
+          "probabilidad_abandono": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Probabilidad de abandono (0-1)",
+            "example": 0.5
+          },
+          "confianza_ensemble": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Nivel de confianza del modelo ensemble",
+            "example": 0.75
+          },
+          "riesgo": {
+            "type": "string",
+            "enum": ["Alto", "Medio", "Bajo"],
+            "description": "Nivel de riesgo categorizado",
+            "example": "Medio"
+          },
+          "modelos_abandono": {
+            "type": "integer",
+            "description": "Número de modelos que predicen abandono",
+            "example": 1
+          },
+          "total_modelos": {
+            "type": "integer",
+            "description": "Número total de modelos en el ensemble",
+            "example": 1
+          },
+          "es_anomalia": {
+            "type": "boolean",
+            "description": "Indica si el usuario presenta comportamiento anómalo",
+            "example": false
+          },
+          "recomendaciones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista de recomendaciones para el usuario",
+            "example": ["Reactivar usuario inactivo", "Mejorar engagement"]
+          },
+          "datos_originales": {
+            "$ref": "#/components/schemas/UserData"
+          }
+        },
+        "required": ["user_id", "prediccion_abandono", "probabilidad_abandono", "riesgo", "datos_originales"]
+      },
+      "UserData": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "description": "ID del usuario",
+            "example": 2
+          },
+          "dias_registrado": {
+            "type": "integer",
+            "description": "Días desde el registro del usuario",
+            "example": 0
+          },
+          "tiempo_total": {
+            "type": "number",
+            "format": "float",
+            "description": "Tiempo total de uso en minutos",
+            "example": 117
+          },
+          "vistas_abiertas": {
+            "type": "integer",
+            "description": "Número de vistas abiertas",
+            "example": 18
+          },
+          "dias_activo": {
+            "type": "integer",
+            "description": "Días activos en el período",
+            "example": 9
+          },
+          "dias_inactivo": {
+            "type": "integer",
+            "description": "Días inactivos en el período",
+            "example": 21
+          },
+          "entrenamientos": {
+            "type": "integer",
+            "description": "Número total de entrenamientos",
+            "example": 8
+          },
+          "tiempo_total_entrenamientos": {
+            "type": "number",
+            "format": "float",
+            "description": "Tiempo total de entrenamientos en minutos",
+            "example": 255
+          },
+          "promedio_ritmo_entrenamientos": {
+            "type": "number",
+            "format": "float",
+            "description": "Promedio de ritmo en entrenamientos",
+            "example": 5.7125
+          },
+          "interacciones_chatbot": {
+            "type": "integer",
+            "description": "Número de interacciones con el chatbot",
+            "example": 0
+          },
+          "ratio_actividad": {
+            "type": "number",
+            "format": "float",
+            "description": "Ratio de actividad (dias_activo / 7)",
+            "example": 1.2857142857142858
+          },
+          "intensidad_uso": {
+            "type": "number",
+            "format": "float",
+            "description": "Intensidad de uso (tiempo_total / vistas_abiertas)",
+            "example": 6.5
+          },
+          "consistencia_entrenamiento": {
+            "type": "number",
+            "format": "float",
+            "description": "Consistencia de entrenamiento (entrenamientos / dias_activo)",
+            "example": 0.8888888888888888
+          },
+          "tendencia_tiempo": {
+            "type": "number",
+            "format": "float",
+            "description": "Tendencia del tiempo de uso (placeholder)",
+            "example": 0
+          },
+          "tendencia_vistas": {
+            "type": "number",
+            "format": "float",
+            "description": "Tendencia de vistas (placeholder)",
+            "example": 0
+          },
+          "tendencia_entrenamientos": {
+            "type": "number",
+            "format": "float",
+            "description": "Tendencia de entrenamientos (placeholder)",
+            "example": 0
+          },
+          "preguntas_nutricion": {
+            "type": "integer",
+            "description": "Preguntas de nutrición al chatbot",
+            "example": 2
+          },
+          "preguntas_entrenamiento": {
+            "type": "integer",
+            "description": "Preguntas de entrenamiento al chatbot",
+            "example": 1
+          },
+          "preguntas_recuperacion": {
+            "type": "integer",
+            "description": "Preguntas de recuperación al chatbot",
+            "example": 1
+          },
+          "preguntas_prevencion": {
+            "type": "integer",
+            "description": "Preguntas de prevención al chatbot",
+            "example": 1
+          },
+          "preguntas_equipamiento": {
+            "type": "integer",
+            "description": "Preguntas de equipamiento al chatbot",
+            "example": 1
+          },
+          "total_preguntas": {
+            "type": "integer",
+            "description": "Total de preguntas al chatbot",
+            "example": 0
+          },
+          "score_ponderado": {
+            "type": "number",
+            "format": "float",
+            "description": "Score ponderado del chatbot",
+            "example": 0
+          }
+        }
+      },
+      "PredictionMetadata": {
+        "type": "object",
+        "properties": {
+          "total_usuarios": {
+            "type": "integer",
+            "description": "Número total de usuarios procesados",
+            "example": 9
+          },
+          "usuarios_altos_riesgo": {
+            "type": "integer",
+            "description": "Número de usuarios con alto riesgo",
+            "example": 3
+          },
+          "usuarios_medios_riesgo": {
+            "type": "integer",
+            "description": "Número de usuarios con riesgo medio",
+            "example": 2
+          },
+          "usuarios_bajos_riesgo": {
+            "type": "integer",
+            "description": "Número de usuarios con bajo riesgo",
+            "example": 4
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp de generación de predicciones",
+            "example": "2025-07-28T09:30:00.000Z"
+          }
+        }
+      },
+      "EndpointStatus": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Indica si el endpoint está disponible"
+          },
+          "response_time": {
+            "type": "integer",
+            "description": "Tiempo de respuesta en milisegundos",
+            "example": 566
+          },
+          "data_count": {
+            "type": "integer",
+            "description": "Número de registros obtenidos",
+            "example": 9
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Mensaje de error si el endpoint no está disponible"
+          }
+        }
+      },
+      "EndpointTestResult": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Indica si el endpoint está disponible"
+          },
+          "response_time": {
+            "type": "integer",
+            "description": "Tiempo de respuesta en milisegundos"
+          },
+          "data_count": {
+            "type": "integer",
+            "description": "Número de registros obtenidos"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success", "failed"],
+            "description": "Estado del test"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Mensaje de error si el test falló"
+          }
+        }
+      }
+    }
+  }
+} 

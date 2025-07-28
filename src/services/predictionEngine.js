@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 class PredictionEngine {
   constructor() {
-    this.predictionApiUrl = process.env.PREDICTION_API_URL || 'https://predict-service-production.up.railway.app/predict';
+    this.predictionApiUrl = process.env.PREDICTION_API_URL || 'http://localhost:4000/api/text-mining/stats';
     this.timeout = 30000;
   }
 
@@ -41,6 +41,9 @@ class PredictionEngine {
   preparePredictionData(userData) {
     const compositeVars = this.calculateCompositeVariables(userData);
     
+    // Mapear datos del chatbot del servicio local
+    const preguntasPorCategoria = userData.preguntas_por_categoria || {};
+    
     return {
       // Datos originales
       user_id: userData.user_id,
@@ -57,8 +60,16 @@ class PredictionEngine {
       // Variables compuestas
       ...compositeVars,
       
-      // Datos de chatbot (simplificados)
-      preguntas_por_categoria: userData.preguntas_por_categoria || {}
+      // Datos de chatbot mapeados a campos individuales
+      preguntas_nutricion: preguntasPorCategoria.nutricion || 0,
+      preguntas_entrenamiento: preguntasPorCategoria.entrenamiento || 0,
+      preguntas_recuperacion: preguntasPorCategoria.recuperacion || 0,
+      preguntas_prevencion: preguntasPorCategoria.prevencion || 0,
+      preguntas_equipamiento: preguntasPorCategoria.equipamiento || 0,
+      
+      // Datos adicionales del servicio local
+      total_preguntas: userData.total_preguntas || 0,
+      score_ponderado: userData.score_ponderado || 0
     };
   }
 
